@@ -11,13 +11,31 @@ KUBECTL_CMD = 'kubectl'
 DOCKER = "docker"
 PODMAN = "podman"
 
+
 def check_output(cmd):
     return subprocess.check_output(cmd, shell=True).decode("utf-8")
 
 
-def get_service_host(service, target=None, domain="", namespace='assisted-installer'):
+def set_profile(target, profile):
+    if target != 'minikube':
+        return
+    check_output(f'{MINIKUBE_CMD} profile {profile}')
+
+
+def get_service_host(
+        service,
+        target=None,
+        domain='',
+        namespace='assisted-installer',
+        profile='minikube'
+            ):
     if target is None or target == "minikube":
-        reply = check_output("{} -n {} service --url {}".format(MINIKUBE_CMD, namespace, service))
+        reply = check_output(
+            f'{MINIKUBE_CMD} '
+            f'-n {namespace} '
+            f'-p {profile} '
+            f'service --url {service}'
+        )
         host = re.sub("http://(.*):.*", r'\1', reply)
     elif target == "oc-ingress":
         host = "{}.{}".format(service, get_domain(domain, namespace))
@@ -28,9 +46,18 @@ def get_service_host(service, target=None, domain="", namespace='assisted-instal
     return host.strip()
 
 
-def get_service_port(service, target=None, namespace='assisted-installer'):
+def get_service_port(
+        service,
+        target=None,
+        namespace='assisted-installer',
+        profile='minikube'
+        ):
     if target is None or target == "minikube":
-        reply = check_output("{} -n {} service --url {}".format(MINIKUBE_CMD, namespace, service))
+        reply = check_output(
+            f'{MINIKUBE_CMD} '
+            f'-n {namespace} '
+            f'-p {profile} '
+            f'service --url {service}')
         port = reply.split(":")[-1]
     else:
         cmd = '{kubecmd} -n {ns} get service {service} | grep {service}'.format(kubecmd=KUBECTL_CMD, ns=namespace, service=service)
@@ -38,14 +65,31 @@ def get_service_port(service, target=None, namespace='assisted-installer'):
         port = reply[4].split(":")[0]
     return port.strip()
 
-def get_service_url(service: str, target: Optional[str] = None, domain: str = "", namespace: str = 'assisted-installer') -> str:
+
+def get_service_url(
+        service: str,
+        target: Optional[str] = None,
+        domain: str = '',
+        namespace: str = 'assisted-installer',
+        profile: str = 'minikube'
+        ) -> str:
     # TODO: delete once rename everything to assisted-installer
     if target == "oc-ingress":
         service_host = f"assisted-installer.{get_domain(domain)}"
         service_port = "80"
     else:
-        service_host = get_service_host(service, target, namespace=namespace)
-        service_port = get_service_port(service, target, namespace=namespace)
+        service_host = get_service_host(
+            service,
+            target,
+            namespace=namespace,
+            profile=profile
+        )
+        service_port = get_service_port(
+            service,
+            target,
+            namespace=namespace,
+            profile=profile
+        )
 
     return f'http://{service_host}:{service_port}'
 

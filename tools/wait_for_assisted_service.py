@@ -15,7 +15,6 @@ SLEEP = 3
 
 def handle_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target")
     parser.add_argument("--domain")
 
     return deployment_options.load_deployment_options(parser)
@@ -30,7 +29,9 @@ def wait_for_request(url: str) -> bool:
 
 def main():
     deploy_options = handle_arguments()
-    service_url = utils.get_service_url(SERVICE, deploy_options.target, deploy_options.domain, deploy_options.namespace)
+    utils.set_profile(deploy_options.target, deploy_options.profile)
+
+    service_url = utils.get_service_url(SERVICE, deploy_options.target, deploy_options.domain, deploy_options.namespace, deploy_options.profile)
     health_url = f'{service_url}/health'
 
     print(f'Wait for {health_url}')
