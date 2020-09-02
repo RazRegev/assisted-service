@@ -99,6 +99,9 @@ func (th *transitionHandler) PostRegisterDuringReboot(sw stateswitch.StateSwitch
 	if !ok {
 		return errors.New("PostRegisterDuringReboot incompatible type of StateSwitch")
 	}
+	if swag.StringValue(&sHost.srcState) == models.HostStatusInstallingPendingUserAction {
+		return errors.New("host is pending for user action")
+	}
 	params, ok := args.(*TransitionArgsRegisterHost)
 	if !ok {
 		return errors.New("PostRegisterDuringReboot invalid argument")

@@ -1243,10 +1243,12 @@ func (b *bareMetalInventory) RegisterHost(ctx context.Context, params installer.
 	}
 
 	if err := b.hostApi.RegisterHost(ctx, &host); err != nil {
-		log.WithError(err).Errorf("failed to register host <%s> cluster <%s>",
-			params.NewHostParams.HostID.String(), params.ClusterID.String())
-		b.eventsHandler.AddEvent(ctx, params.ClusterID, params.NewHostParams.HostID, models.EventSeverityError,
-			"Failed to register host: error creating host metadata", time.Now())
+		if err.Error() != "host is pending for user action" {
+			log.WithError(err).Errorf("failed to register host <%s> cluster <%s>",
+				params.NewHostParams.HostID.String(), params.ClusterID.String())
+			b.eventsHandler.AddEvent(ctx, params.ClusterID, params.NewHostParams.HostID, models.EventSeverityError,
+				"Failed to register host: error creating host metadata", time.Now())
+		}
 		return installer.NewRegisterHostBadRequest().
 			WithPayload(common.GenerateError(http.StatusBadRequest, err))
 	}
