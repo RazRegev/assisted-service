@@ -157,8 +157,8 @@ func WithSeverity(severity *string) types.GomegaMatcher {
 
 func WithTime(t time.Time) types.GomegaMatcher {
 	return WithTransform(func(e *events.Event) time.Time {
-		return time.Time(*e.EventTime)
-	}, BeTemporally("~", t, time.Millisecond*100))
+		return time.Time(*e.EventTime).Local()
+	}, BeTemporally("~", t, time.Second))
 }
 
 func TestEvents(t *testing.T) {
