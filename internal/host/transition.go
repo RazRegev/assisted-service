@@ -451,27 +451,35 @@ func (th *transitionHandler) HasInstallationTimedOut(sw stateswitch.StateSwitch,
 	return time.Since(time.Time(sHost.host.StatusUpdatedAt)) > InstallationTimeout, nil
 }
 
-func (th *transitionHandler) HasInstallationInProgressTimedOut(sw stateswitch.StateSwitch, args stateswitch.TransitionArgs) (bool, error) {
+func (th *transitionHandler) HasInstallationInProgressTimedOut(sw stateswitch.StateSwitch, _ stateswitch.TransitionArgs) (bool, error) {
 	sHost, ok := sw.(*stateHost)
 	if !ok {
 		return false, errors.New("HasInstallationInProgressTimedOut incompatible type of StateSwitch")
-	}
-	params, ok := args.(*TransitionArgsRefreshHost)
-	if !ok {
-		return false, errors.New("HasInstallationInProgressTimedOut invalid argument")
-	}
-	if funk.Contains(WrongBootOrderIgnoreTimeoutStages, sHost.host.Progress.CurrentStage) {
-		if isClusterPendingUser, err := IsClusterInstallationPendingUserAction(sHost.host.ClusterID, params.db); err != nil {
-			return false, err
-		} else if isClusterPendingUser {
-			return false, nil
-		}
 	}
 	maxDuration, ok := InstallationProgressTimeout[sHost.host.Progress.CurrentStage]
 	if !ok {
 		maxDuration = InstallationProgressTimeout["DEFAULT"]
 	}
 	return time.Since(time.Time(sHost.host.Progress.StageUpdatedAt)) > maxDuration, nil
+}
+
+func (th *transitionHandler) ShouldIgnoreTimeout(sw stateswitch.StateSwitch, args stateswitch.TransitionArgs) (bool, error) {
+	sHost, ok := sw.(*stateHost)
+	if !ok {
+		return false, errors.New("ShouldRefreshTimeout incompatible type of StateSwitch")
+	}
+	params, ok := args.(*TransitionArgsRefreshHost)
+	if !ok {
+		return false, errors.New("ShouldRefreshTimeout invalid argument")
+	}
+	if funk.Contains(WrongBootOrderIgnoreTimeoutStages, sHost.host.Progress.CurrentStage) {
+		if isClusterPendingUser, err := IsClusterInstallationPendingUserAction(sHost.host.ClusterID, params.db); err != nil {
+			return true, err
+		} else if isClusterPendingUser {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func IsClusterInstallationPendingUserAction(clusterID strfmt.UUID, db *gorm.DB) (bool, error) {
@@ -538,4 +546,22 @@ func getFailedValidations(params *TransitionArgsRefreshHost) []string {
 		}
 	}
 	return failedValidations
+}
+
+func (th *transitionHandler) PostRefreshHostUpdateTimeout(sw stateswitch.StateSwitch, args stateswitch.TransitionArgs) error {
+	sHost, ok := sw.(*stateHost)
+	if !ok {
+		return errors.New("PostRefreshHostUpdateTimeout incompatible type of StateSwitch")
+	}
+	params, ok := args.(*TransitionArgsRefreshHost)
+	if !ok {
+		return errors.New("PostRefreshHostUpdateTimeout invalid argument")
+	}
+	_, err := updateHostTimeout(
+		logutil.FromContext(params.ctx, th.log),
+		params.db,
+		sHost.host.ClusterID,
+		*sHost.host.ID,
+		sHost.srcState)
+	return err
 }

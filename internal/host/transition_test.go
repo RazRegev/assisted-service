@@ -1124,7 +1124,8 @@ var _ = Describe("Refresh Host", func() {
 				host.Inventory = masterInventory()
 				host.Role = models.HostRoleMaster
 				host.CheckedInAt = hostCheckInAt
-				host.StatusUpdatedAt = strfmt.DateTime(time.Now().Add(-passedTime))
+				statusUpdatedAt := strfmt.DateTime(time.Now().Add(-passedTime))
+				host.StatusUpdatedAt = statusUpdatedAt
 				host.Progress = &models.HostProgressInfo{
 					CurrentStage: t.stage,
 				}
@@ -1149,6 +1150,7 @@ var _ = Describe("Refresh Host", func() {
 					Expect(swag.StringValue(resultHost.Status)).Should(Equal(models.HostStatusError))
 					Expect(swag.StringValue(resultHost.StatusInfo)).Should(Equal(formatProgressTimedOutInfo(t.stage)))
 				} else {
+					Expect(resultHost.StatusUpdatedAt).ShouldNot(Equal(statusUpdatedAt))
 					Expect(swag.StringValue(resultHost.Status)).Should(Equal(models.HostStatusInstallingInProgress))
 				}
 			})
