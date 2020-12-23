@@ -73,7 +73,6 @@ func (th *transitionHandler) PostResetCluster(sw stateswitch.StateSwitch, args s
 	}
 
 	return th.updateTransitionCluster(logutil.FromContext(params.ctx, th.log), params.db, sCluster, params.reason,
-		"ControllerLogsCollectedAt", strfmt.DateTime(time.Time{}),
 		"OpenshiftClusterID", "", // reset Openshift cluster ID when resetting
 	)
 }
