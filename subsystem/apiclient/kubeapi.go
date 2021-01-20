@@ -2,10 +2,10 @@ package apiclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
-	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
 	"github.com/openshift/assisted-service/client/installer"
 	"github.com/openshift/assisted-service/internal/common"
@@ -50,43 +50,38 @@ func (kc *KubeAPIClient) RegisterCluster(
 	params *installer.RegisterClusterParams,
 ) (*models.Cluster, error) {
 
-	cParams := params.NewClusterParams
-
-	clusterName := swag.StringValue(cParams.Name)
-
 	pullSecretRef, pullSecretErr := kc.GetSecretRefAndDeployIfNotExists(
 		ctx,
 		"pull-secret",
-		swag.StringValue(cParams.PullSecret))
+		swag.StringValue(params.NewClusterParams.PullSecret))
 	if pullSecretErr != nil {
 		return nil, errors.Wrapf(pullSecretErr, "failed to deploy pull secret")
 	}
 
-	metaName := uuid.New().String()
 	c := adiiov1alpha1.Cluster{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Cluster",
 			APIVersion: getAPIVersion(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      metaName,
+			Name:      swag.StringValue(params.NewClusterParams.Name),
 			Namespace: kc.namespace,
 		},
 		Spec: adiiov1alpha1.ClusterSpec{
-			Name:                     clusterName,
-			OpenshiftVersion:         swag.StringValue(cParams.OpenshiftVersion),
-			BaseDNSDomain:            swag.StringValue(&cParams.BaseDNSDomain),
-			ClusterNetworkCidr:       swag.StringValue(cParams.ClusterNetworkCidr),
-			ClusterNetworkHostPrefix: swag.Int64Value(&cParams.ClusterNetworkHostPrefix),
-			ServiceNetworkCidr:       swag.StringValue(cParams.ServiceNetworkCidr),
-			IngressVip:               swag.StringValue(&cParams.IngressVip),
-			SSHPublicKey:             swag.StringValue(&cParams.SSHPublicKey),
-			VIPDhcpAllocation:        swag.BoolValue(cParams.VipDhcpAllocation),
-			HTTPProxy:                swag.StringValue(cParams.HTTPProxy),
-			HTTPSProxy:               swag.StringValue(cParams.HTTPSProxy),
-			NoProxy:                  swag.StringValue(cParams.NoProxy),
-			UserManagedNetworking:    swag.BoolValue(cParams.UserManagedNetworking),
-			AdditionalNtpSource:      swag.StringValue(cParams.AdditionalNtpSource),
+			Name:                     swag.StringValue(params.NewClusterParams.Name),
+			OpenshiftVersion:         swag.StringValue(params.NewClusterParams.OpenshiftVersion),
+			BaseDNSDomain:            swag.StringValue(&params.NewClusterParams.BaseDNSDomain),
+			ClusterNetworkCidr:       swag.StringValue(params.NewClusterParams.ClusterNetworkCidr),
+			ClusterNetworkHostPrefix: swag.Int64Value(&params.NewClusterParams.ClusterNetworkHostPrefix),
+			ServiceNetworkCidr:       swag.StringValue(params.NewClusterParams.ServiceNetworkCidr),
+			IngressVip:               swag.StringValue(&params.NewClusterParams.IngressVip),
+			SSHPublicKey:             swag.StringValue(&params.NewClusterParams.SSHPublicKey),
+			VIPDhcpAllocation:        swag.BoolValue(params.NewClusterParams.VipDhcpAllocation),
+			HTTPProxy:                swag.StringValue(params.NewClusterParams.HTTPProxy),
+			HTTPSProxy:               swag.StringValue(params.NewClusterParams.HTTPSProxy),
+			NoProxy:                  swag.StringValue(params.NewClusterParams.NoProxy),
+			UserManagedNetworking:    swag.BoolValue(params.NewClusterParams.UserManagedNetworking),
+			AdditionalNtpSource:      swag.StringValue(params.NewClusterParams.AdditionalNtpSource),
 			PullSecretRef:            pullSecretRef,
 		},
 	}
@@ -94,11 +89,10 @@ func (kc *KubeAPIClient) RegisterCluster(
 		return nil, errors.Wrapf(deployErr, "failed to deploy cluster")
 	}
 
-	key := types.NamespacedName{
-		Name:      metaName,
+	return kc.getClusterWithRetries(ctx, types.NamespacedName{
+		Name:      swag.StringValue(params.NewClusterParams.Name),
 		Namespace: kc.namespace,
-	}
-	return kc.getClusterWithRetries(ctx, key)
+	})
 }
 
 func (kc *KubeAPIClient) GetSecretRefAndDeployIfNotExists(
@@ -106,6 +100,13 @@ func (kc *KubeAPIClient) GetSecretRefAndDeployIfNotExists(
 	secretName, pullSecret string,
 ) (*corev1.SecretReference, error) {
 
+	ref := &corev1.SecretReference{
+		Name:      secretName,
+		Namespace: kc.namespace,
+	}
+	if pullSecret == "" {
+		return ref, nil
+	}
 	key := types.NamespacedName{
 		Name:      secretName,
 		Namespace: kc.namespace,
@@ -113,10 +114,7 @@ func (kc *KubeAPIClient) GetSecretRefAndDeployIfNotExists(
 	if _, err := kc.getSecret(ctx, key); runtimeclient.IgnoreNotFound(err) != nil {
 		return nil, err
 	} else if err == nil {
-		return &corev1.SecretReference{
-			Name:      secretName,
-			Namespace: kc.namespace,
-		}, nil
+		return ref, nil
 	}
 	return kc.deployPullSecret(ctx, secretName, pullSecret)
 }
@@ -130,7 +128,7 @@ func (kc *KubeAPIClient) deployPullSecret(
 		return nil, nil
 	}
 
-	s := &corev1.Secret{
+	if err := kc.client.Create(ctx, &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
 			APIVersion: getAPIVersion(),
@@ -140,8 +138,7 @@ func (kc *KubeAPIClient) deployPullSecret(
 			Namespace: kc.namespace,
 		},
 		StringData: map[string]string{"pullSecret": secret},
-	}
-	if err := kc.client.Create(ctx, s); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -168,9 +165,9 @@ func (kc *KubeAPIClient) getClusterWithRetries(
 	var getClusterErr error
 	for i := 0; i < 5; i++ {
 		if verifyStatusErr := kc.verifyClusterStatus(ctx, key); verifyStatusErr != nil {
-			return nil, verifyStatusErr
+			return nil, errors.Wrapf(verifyStatusErr, "bad cluster status")
 		}
-		if cluster, getClusterErr = kc.getClusterByKey(key); getClusterErr == gorm.ErrRecordNotFound {
+		if cluster, getClusterErr = kc.getClusterByKeyFromDB(key); getClusterErr == gorm.ErrRecordNotFound {
 			time.Sleep(time.Millisecond * 500)
 			continue
 		}
@@ -193,7 +190,7 @@ func (kc *KubeAPIClient) verifyClusterStatus(ctx context.Context, key types.Name
 	return nil
 }
 
-func (kc *KubeAPIClient) getClusterByKey(key types.NamespacedName) (*models.Cluster, error) {
+func (kc *KubeAPIClient) getClusterByKeyFromDB(key types.NamespacedName) (*models.Cluster, error) {
 	c := &common.Cluster{}
 	if res := kc.db.Take(&c, "kube_key_name = ? and kube_key_namespace = ?",
 		key.Name, key.Namespace); res.Error != nil {
@@ -211,13 +208,13 @@ func (kc *KubeAPIClient) DeregisterCluster(
 	if getErr != nil {
 		return errors.Wrapf(getErr, "failed getting cluster from db")
 	}
-	c := &adiiov1alpha1.Cluster{
+
+	if delErr := kc.client.Delete(ctx, &adiiov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name,
 			Namespace: kc.namespace,
 		},
-	}
-	if delErr := kc.client.Delete(ctx, c); delErr != nil {
+	}); delErr != nil {
 		return errors.Wrapf(delErr, "failed deleting cluster")
 	}
 
@@ -228,14 +225,14 @@ func (kc *KubeAPIClient) DeregisterCluster(
 	return nil
 }
 
-func (kc *KubeAPIClient) getClusterByID(id strfmt.UUID) (*models.Cluster, error) {
+func (kc *KubeAPIClient) getClusterByID(id strfmt.UUID) (*common.Cluster, error) {
 	c := &common.Cluster{}
 	if res := kc.db.Take(c, "id = ?", id.String()); res.Error != nil {
 		return nil, res.Error
 	} else if res.RowsAffected == 0 {
 		return nil, errors.New("cluster was not found in db")
 	}
-	return &c.Cluster, nil
+	return c, nil
 }
 
 func (kc *KubeAPIClient) UpdateCluster(
@@ -243,57 +240,125 @@ func (kc *KubeAPIClient) UpdateCluster(
 	params *installer.UpdateClusterParams,
 ) (*models.Cluster, error) {
 
-	cParams := params.ClusterUpdateParams
+	cluster, getClusterErr := kc.getClusterByID(params.ClusterID)
+	if getClusterErr != nil {
+		return nil, errors.Wrapf(getClusterErr, "failed to get cluster")
+	}
+	spec, specErr := kc.buildClusterUpdateSpec(ctx, cluster, params.ClusterUpdateParams)
+	if specErr != nil {
+		return nil, errors.Wrapf(specErr, "failed build cluster update spec")
+	}
+	patch, patchErr := kc.createPatchFromSpec(spec)
+	if patchErr != nil {
+		return nil, errors.Wrapf(patchErr, "failed get patch from spec")
+	}
 
-	clusterName := swag.StringValue(cParams.Name)
+	if deployPatchErr := kc.client.Patch(ctx,
+		&adiiov1alpha1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cluster.Name,
+				Namespace: kc.namespace,
+			},
+		},
+		runtimeclient.RawPatch(types.MergePatchType, patch)); deployPatchErr != nil {
+		return nil, errors.Wrapf(deployPatchErr, "failed to deploy cluster patch %s", patch)
+	}
+	return kc.getClusterAfterUpdateWithRetries(ctx, cluster.Cluster, spec)
+}
 
+func (kc *KubeAPIClient) buildClusterUpdateSpec(
+	ctx context.Context,
+	cluster *common.Cluster,
+	params *models.ClusterUpdateParams,
+) (*adiiov1alpha1.ClusterSpec, error) {
+
+	setString := func(new *string, old string, target *string) {
+		if new != nil && swag.StringValue(new) != "" && *new != old {
+			*target = swag.StringValue(new)
+		}
+	}
+	setBool := func(new *bool, old bool, target *bool) {
+		if new != nil && *new != old {
+			*target = swag.BoolValue(new)
+		}
+	}
+	setInt64 := func(new *int64, old int64, target *int64) {
+		if new != nil && *new != old {
+			*target = swag.Int64Value(new)
+		}
+	}
+
+	spec := adiiov1alpha1.ClusterSpec{}
+	setString(params.AdditionalNtpSource, cluster.AdditionalNtpSource, &spec.AdditionalNtpSource)
+	setString(params.APIVip, cluster.APIVip, &spec.APIVip)
+	setString(params.APIVipDNSName, swag.StringValue(cluster.APIVipDNSName), &spec.APIVipDNSName)
+	setString(params.BaseDNSDomain, cluster.BaseDNSDomain, &spec.BaseDNSDomain)
+	setString(params.ClusterNetworkCidr, cluster.ClusterNetworkCidr, &spec.ClusterNetworkCidr)
+	setString(params.HTTPProxy, cluster.HTTPProxy, &spec.HTTPProxy)
+	setString(params.HTTPSProxy, cluster.HTTPSProxy, &spec.HTTPSProxy)
+	setString(params.IngressVip, cluster.IngressVip, &spec.IngressVip)
+	setString(params.MachineNetworkCidr, cluster.MachineNetworkCidr, spec.MachineNetworkCidr)
+	setString(params.Name, cluster.Name, &spec.Name)
+	setString(params.NoProxy, cluster.NoProxy, &spec.NoProxy)
+	setString(params.ServiceNetworkCidr, cluster.ServiceNetworkCidr, &spec.ServiceNetworkCidr)
+	setString(params.SSHPublicKey, cluster.SSHPublicKey, &spec.SSHPublicKey)
+	setBool(params.UserManagedNetworking, swag.BoolValue(cluster.UserManagedNetworking), &spec.UserManagedNetworking)
+	setBool(params.VipDhcpAllocation, swag.BoolValue(cluster.VipDhcpAllocation), &spec.VIPDhcpAllocation)
+	setInt64(params.ClusterNetworkHostPrefix, cluster.ClusterNetworkHostPrefix, &spec.ClusterNetworkHostPrefix)
+
+	spec.OpenshiftVersion = cluster.OpenshiftVersion
+
+	pullSecret := cluster.PullSecret
+	if params.PullSecret != nil && swag.StringValue(params.PullSecret) != "" {
+		pullSecret = swag.StringValue(params.PullSecret)
+	}
 	pullSecretRef, pullSecretErr := kc.GetSecretRefAndDeployIfNotExists(
 		ctx,
-		clusterName,
-		swag.StringValue(cParams.PullSecret))
+		spec.Name,
+		pullSecret)
 	if pullSecretErr != nil {
 		return nil, errors.Wrapf(pullSecretErr, "failed to deploy pull secret")
 	}
+	spec.PullSecretRef = pullSecretRef
+	return &spec, nil
+}
 
-	c := adiiov1alpha1.Cluster{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Cluster",
-			APIVersion: getAPIVersion(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterName,
+func (kc *KubeAPIClient) createPatchFromSpec(spec *adiiov1alpha1.ClusterSpec) ([]byte, error) {
+	if patch, err := json.Marshal(spec); err != nil {
+		return nil, err
+	} else {
+		return []byte(fmt.Sprintf(`{"spec": %s}`, patch)), nil
+	}
+}
+
+func (kc *KubeAPIClient) getClusterAfterUpdateWithRetries(
+	ctx context.Context,
+	cluster models.Cluster,
+	spec *adiiov1alpha1.ClusterSpec,
+) (*models.Cluster, error) {
+
+	var c *models.Cluster
+	var err error
+	for i := 0; i < 5; i++ {
+		if verifyStatusErr := kc.verifyClusterStatus(ctx, types.NamespacedName{
+			Name:      spec.Name,
 			Namespace: kc.namespace,
-		},
-		Spec: adiiov1alpha1.ClusterSpec{
-			Name:                     clusterName,
-			BaseDNSDomain:            swag.StringValue(cParams.BaseDNSDomain),
-			ClusterNetworkCidr:       swag.StringValue(cParams.ClusterNetworkCidr),
-			ClusterNetworkHostPrefix: swag.Int64Value(cParams.ClusterNetworkHostPrefix),
-			ServiceNetworkCidr:       swag.StringValue(cParams.ServiceNetworkCidr),
-			IngressVip:               swag.StringValue(cParams.IngressVip),
-			SSHPublicKey:             swag.StringValue(cParams.SSHPublicKey),
-			VIPDhcpAllocation:        swag.BoolValue(cParams.VipDhcpAllocation),
-			HTTPProxy:                swag.StringValue(cParams.HTTPProxy),
-			HTTPSProxy:               swag.StringValue(cParams.HTTPSProxy),
-			NoProxy:                  swag.StringValue(cParams.NoProxy),
-			UserManagedNetworking:    swag.BoolValue(cParams.UserManagedNetworking),
-			AdditionalNtpSource:      swag.StringValue(cParams.AdditionalNtpSource),
-			PullSecretRef:            pullSecretRef,
-		},
+		}); verifyStatusErr != nil {
+			return nil, errors.Wrapf(verifyStatusErr, "bad cluster status")
+		}
+		c, err = kc.getClusterByKeyFromDB(types.NamespacedName{
+			Name:      spec.Name,
+			Namespace: kc.namespace,
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get cluster after patch")
+		}
+		if cluster.UpdatedAt != c.UpdatedAt {
+			return c, nil
+		}
+		time.Sleep(time.Millisecond * 500)
 	}
-	if deployErr := kc.client.Update(ctx, &c); deployErr != nil {
-		return nil, errors.Wrapf(deployErr, "failed to deploy cluster")
-	}
-
-	key := types.NamespacedName{
-		Name:      clusterName,
-		Namespace: kc.namespace,
-	}
-	cluster, getClusterErr := kc.getClusterByKey(key)
-	if getClusterErr != nil {
-		return nil, errors.Wrapf(getClusterErr, "failed to get cluster after creation")
-	}
-	return cluster, nil
+	return nil, errors.New("cluster has failed to be updated")
 }
 
 func (kc *KubeAPIClient) DeleteAllClusters(ctx context.Context) error {
