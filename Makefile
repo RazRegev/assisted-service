@@ -40,14 +40,14 @@ APPLY_NAMESPACE := $(or ${APPLY_NAMESPACE},True)
 ROUTE53_SECRET := ${ROUTE53_SECRET}
 OCM_CLIENT_ID := ${OCM_CLIENT_ID}
 OCM_CLIENT_SECRET := ${OCM_CLIENT_SECRET}
-ENABLE_AUTH := $(or ${ENABLE_AUTH},False)
+ENABLE_AUTH := False
 DELETE_PVC := $(or ${DELETE_PVC},False)
 PUBLIC_CONTAINER_REGISTRIES := $(or ${PUBLIC_CONTAINER_REGISTRIES},quay.io)
 PODMAN_PULL_FLAG := $(or ${PODMAN_PULL_FLAG},--pull always)
 
-ifdef ENABLE_KUBE_API
-	ENABLE_KUBE_API_CMD = --enable-kube-api true
-endif
+ENABLE_KUBE_API := true
+ENABLE_KUBE_API_CMD = --enable-kube-api true
+
 
 # We decided to have an option to change replicas count only while running in minikube
 # That line is checking if we run on minikube
@@ -130,7 +130,7 @@ generate-migration:
 ##################
 
 .PHONY: build docs
-build: lint unit-test build-minimal
+build: build-minimal
 
 build-all: build-in-docker
 
@@ -247,7 +247,7 @@ ci-deploy-for-subsystem: $(VERIFY_MINIKUBE) generate-keys
 
 deploy-test: _verify_minikube generate-keys
 	export ASSISTED_ORG=minikube-local-registry && export ASSISTED_TAG=minikube-test && export TEST_FLAGS=--subsystem-test && \
-	export ENABLE_AUTH="True" && export DUMMY_IGNITION="True" && \
+	export ENABLE_AUTH="False" && export DUMMY_IGNITION="True" && \
 	$(MAKE) _update-minikube deploy-wiremock deploy-all
 
 update-ocp-version:
@@ -317,7 +317,8 @@ test:
 		TEST_TOKEN="$(shell cat $(BUILD_FOLDER)/auth-tokenString)" \
 		TEST_TOKEN_ADMIN="$(shell cat $(BUILD_FOLDER)/auth-tokenAdminString)" \
 		TEST_TOKEN_UNALLOWED="$(shell cat $(BUILD_FOLDER)/auth-tokenUnallowedString)" \
-		ENABLE_AUTH="true" \
+		ENABLE_AUTH="false" \
+		ENABLE_KUBE_API="true" \
 		go test -v ./subsystem/... -count=1 $(GINKGO_FOCUS_FLAG) -ginkgo.v -timeout 120m
 
 deploy-wiremock: deploy-namespace
