@@ -46,25 +46,6 @@ func deletePullSecretResource(ctx context.Context, client k8sclient.Client, secr
 	Expect(err).ShouldNot(HaveOccurred())
 }
 
-func getDefaultClusterSpec() *v1alpha1.ClusterSpec {
-	return &v1alpha1.ClusterSpec{
-		Name:                     "test-cluster",
-		OpenshiftVersion:         "4.6",
-		BaseDNSDomain:            "test.domain",
-		ClusterNetworkCidr:       "192.168.126.0/14",
-		ClusterNetworkHostPrefix: 14,
-		ServiceNetworkCidr:       "172.0.0.0/16",
-		IngressVip:               "192.168.126.100",
-		SSHPublicKey:             sshPublicKey,
-		VIPDhcpAllocation:        false,
-		HTTPProxy:                "http://10.10.1.1:3128",
-		HTTPSProxy:               "https://10.10.1.1:3129",
-		NoProxy:                  "quay.io",
-		UserManagedNetworking:    false,
-		AdditionalNtpSource:      "test.ntp.source",
-		PullSecretRef:            secretRef,
-	}
-}
 func deployClusterCRD(ctx context.Context, client k8sclient.Client, spec v1alpha1.ClusterSpec) {
 	err := client.Create(ctx, &v1alpha1.Cluster{
 		TypeMeta: metav1.TypeMeta{
@@ -136,6 +117,26 @@ var _ = Describe("input/output tests", func() {
 
 	Context("cluster", func() {
 		secretRef := &corev1.SecretReference{}
+
+		getDefaultClusterSpec := func() *v1alpha1.ClusterSpec {
+			return &v1alpha1.ClusterSpec{
+				Name:                     "test-cluster",
+				OpenshiftVersion:         "4.6",
+				BaseDNSDomain:            "test.domain",
+				ClusterNetworkCidr:       "192.168.126.0/14",
+				ClusterNetworkHostPrefix: 14,
+				ServiceNetworkCidr:       "172.0.0.0/16",
+				IngressVip:               "192.168.126.100",
+				SSHPublicKey:             sshPublicKey,
+				VIPDhcpAllocation:        false,
+				HTTPProxy:                "http://proxyserver:3218",
+				HTTPSProxy:               "http://proxyserver:3218",
+				NoProxy:                  "quay.io",
+				UserManagedNetworking:    false,
+				AdditionalNtpSource:      "test.ntp.source",
+				PullSecretRef:            secretRef,
+			}
+		}
 
 		BeforeSuite(func() {
 			deployPullSecretResource(ctx, client, "pull-secret", pullSecret)
