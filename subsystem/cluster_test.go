@@ -10,10 +10,8 @@ import (
 	"github.com/alecthomas/units"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
-	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/openshift/assisted-service/client/installer"
-	"github.com/openshift/assisted-service/internal/common"
 	"github.com/openshift/assisted-service/models"
 )
 
@@ -94,52 +92,6 @@ var (
 		{SourceName: "clock.dummy.com", SourceState: models.SourceStateSynced},
 	}
 )
-
-var _ = Describe("Cluster", func() {
-	ctx := context.Background()
-	var cluster *models.Cluster
-	var err error
-	AfterEach(func() {
-		performCleanup(ctx)
-	})
-
-	It("register cluster success - kube-api", func() {
-		cluster, err = kubeClient.RegisterCluster(ctx, &installer.RegisterClusterParams{
-			NewClusterParams: &models.ClusterCreateParams{
-				Name:                     swag.String("test-cluster"),
-				OpenshiftVersion:         swag.String(common.DefaultTestOpenShiftVersion),
-				PullSecret:               swag.String(pullSecret),
-				BaseDNSDomain:            swag.StringValue(swag.String("test.com")),
-				ClusterNetworkCidr:       swag.String("10.128.0.0/14"),
-				ClusterNetworkHostPrefix: 23,
-				ServiceNetworkCidr:       swag.String("172.30.0.0/16"),
-				IngressVip:               swag.StringValue(swag.String("1.2.3.9")),
-				VipDhcpAllocation:        swag.Bool(false),
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		waitForClusterState(
-			ctx,
-			*cluster.ID,
-			models.ClusterStatusPendingForInput,
-			defaultWaitForClusterStateTimeout,
-			"")
-
-		cluster, err = kubeClient.UpdateCluster(ctx, &installer.UpdateClusterParams{
-			ClusterID: *cluster.ID,
-			ClusterUpdateParams: &models.ClusterUpdateParams{
-				Name:   swag.String("test-cluster"),
-				APIVip: swag.String("1.2.3.888"),
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(swag.StringValue(cluster.Status)).Should(Equal("pending-for-input"))
-		Expect(cluster.StatusUpdatedAt).ShouldNot(Equal(strfmt.DateTime(time.Time{})))
-		Expect(cluster.APIVip).Should(Equal("1.2.3.888"))
-
-	})
-
-})
 
 func isClusterInState(ctx context.Context, clusterID strfmt.UUID, state, stateInfo string) (bool, string) {
 	rep, err := userBMClient.Installer.GetCluster(ctx, &installer.GetClusterParams{ClusterID: clusterID})

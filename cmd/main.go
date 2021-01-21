@@ -101,7 +101,7 @@ var Options struct {
 	DeletionWorkerInterval      time.Duration `envconfig:"DELETION_WORKER_INTERVAL" default:"1h"`
 	ValidationsConfig           validations.Config
 	AssistedServiceISOConfig    assistedserviceiso.Config
-	EnableKubeAPI               bool `envconfig:"ENABLE_KUBE_API" default:"false"`
+	EnableKubeAPI               bool `envconfig:"ENABLE_KUBE_API" default:"true"`
 }
 
 func InitLogs() *logrus.Entry {

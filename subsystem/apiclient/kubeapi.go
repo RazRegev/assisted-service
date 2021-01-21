@@ -22,7 +22,7 @@ import (
 )
 
 type KubeAPIClient struct {
-	client    runtimeclient.Client
+	Client    runtimeclient.Client
 	namespace string
 	db        *gorm.DB
 }
@@ -38,7 +38,7 @@ func NewKubeAPIClient(
 		return nil, err
 	}
 	kc := &KubeAPIClient{
-		client:    client,
+		Client:    client,
 		namespace: namespace,
 		db:        db,
 	}
@@ -85,7 +85,7 @@ func (kc *KubeAPIClient) RegisterCluster(
 			PullSecretRef:            pullSecretRef,
 		},
 	}
-	if deployErr := kc.client.Create(ctx, &c); deployErr != nil {
+	if deployErr := kc.Client.Create(ctx, &c); deployErr != nil {
 		return nil, errors.Wrapf(deployErr, "failed to deploy cluster")
 	}
 
@@ -128,7 +128,7 @@ func (kc *KubeAPIClient) deployPullSecret(
 		return nil, nil
 	}
 
-	if err := kc.client.Create(ctx, &corev1.Secret{
+	if err := kc.Client.Create(ctx, &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
 			APIVersion: getAPIVersion(),
@@ -150,7 +150,7 @@ func (kc *KubeAPIClient) deployPullSecret(
 
 func (kc *KubeAPIClient) getSecret(ctx context.Context, key types.NamespacedName) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
-	if err := kc.client.Get(ctx, key, secret); err != nil {
+	if err := kc.Client.Get(ctx, key, secret); err != nil {
 		return nil, err
 	}
 	return secret, nil
@@ -181,7 +181,7 @@ func (kc *KubeAPIClient) getClusterWithRetries(
 
 func (kc *KubeAPIClient) verifyClusterStatus(ctx context.Context, key types.NamespacedName) error {
 	cluster := &adiiov1alpha1.Cluster{}
-	if err := kc.client.Get(ctx, key, cluster); err != nil {
+	if err := kc.Client.Get(ctx, key, cluster); err != nil {
 		return err
 	}
 	if cluster.Status.Error != "" {
@@ -209,7 +209,7 @@ func (kc *KubeAPIClient) DeregisterCluster(
 		return errors.Wrapf(getErr, "failed getting cluster from db")
 	}
 
-	if delErr := kc.client.Delete(ctx, &adiiov1alpha1.Cluster{
+	if delErr := kc.Client.Delete(ctx, &adiiov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name,
 			Namespace: kc.namespace,
@@ -253,10 +253,10 @@ func (kc *KubeAPIClient) UpdateCluster(
 		return nil, errors.Wrapf(patchErr, "failed get patch from spec")
 	}
 
-	if deployPatchErr := kc.client.Patch(ctx,
+	if deployPatchErr := kc.Client.Patch(ctx,
 		&adiiov1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      cluster.Name,
+				Name:      spec.Name,
 				Namespace: kc.namespace,
 			},
 		},
@@ -298,7 +298,6 @@ func (kc *KubeAPIClient) buildClusterUpdateSpec(
 	setString(params.HTTPSProxy, cluster.HTTPSProxy, &spec.HTTPSProxy)
 	setString(params.IngressVip, cluster.IngressVip, &spec.IngressVip)
 	setString(params.MachineNetworkCidr, cluster.MachineNetworkCidr, spec.MachineNetworkCidr)
-	setString(params.Name, cluster.Name, &spec.Name)
 	setString(params.NoProxy, cluster.NoProxy, &spec.NoProxy)
 	setString(params.ServiceNetworkCidr, cluster.ServiceNetworkCidr, &spec.ServiceNetworkCidr)
 	setString(params.SSHPublicKey, cluster.SSHPublicKey, &spec.SSHPublicKey)
@@ -306,6 +305,7 @@ func (kc *KubeAPIClient) buildClusterUpdateSpec(
 	setBool(params.VipDhcpAllocation, swag.BoolValue(cluster.VipDhcpAllocation), &spec.VIPDhcpAllocation)
 	setInt64(params.ClusterNetworkHostPrefix, cluster.ClusterNetworkHostPrefix, &spec.ClusterNetworkHostPrefix)
 
+	spec.Name = cluster.Name
 	spec.OpenshiftVersion = cluster.OpenshiftVersion
 
 	pullSecret := cluster.PullSecret
@@ -363,11 +363,11 @@ func (kc *KubeAPIClient) getClusterAfterUpdateWithRetries(
 
 func (kc *KubeAPIClient) DeleteAllClusters(ctx context.Context) error {
 	cl := &adiiov1alpha1.ClusterList{}
-	if err := kc.client.List(ctx, cl); err != nil {
+	if err := kc.Client.List(ctx, cl); err != nil {
 		return errors.Wrapf(err, "failed listing clusters")
 	}
 	for _, c := range cl.Items {
-		if err := kc.client.Delete(ctx, &c); err != nil {
+		if err := kc.Client.Delete(ctx, &c); err != nil {
 			return errors.Wrapf(err, "failed deleting cluster")
 		}
 	}
