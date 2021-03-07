@@ -72,15 +72,7 @@ def get_service_host(
         namespace='assisted-installer',
         profile='minikube'
         ):
-    if target is None or target == LOCAL_TARGET:
-        reply = check_output(
-            f'{MINIKUBE_CMD} '
-            f'-n {namespace} '
-            f'-p {profile} '
-            f'service --url {service}'
-        )
-        host = re.sub("http://(.*):.*", r'\1', reply)
-    elif target == INGRESS_REMOTE_TARGET:
+    if target == INGRESS_REMOTE_TARGET:
         domain = get_domain(domain, target, namespace, profile)
         host = f'{service}.{domain}'
     elif target == OCP_TARGET:
@@ -101,19 +93,11 @@ def get_service_port(
         namespace='assisted-installer',
         profile='minikube'
         ):
-    if target is None or target == LOCAL_TARGET:
-        reply = check_output(
-            f'{MINIKUBE_CMD} '
-            f'-n {namespace} '
-            f'-p {profile} '
-            f'service --url {service}')
-        port = reply.split(":")[-1]
-    else:
-        kubectl_cmd = get_kubectl_command(target, namespace, profile)
-        cmd = f'{kubectl_cmd} get service {service} | grep {service}'
-        reply = check_output(cmd)[:-1].split()
-        ports = reply[4].split(":")
-        port = ports[0] if target != OCP_TARGET else ports[1].split("/")[0]
+    kubectl_cmd = get_kubectl_command(target, namespace, profile)
+    cmd = f'{kubectl_cmd} get service {service} | grep {service}'
+    reply = check_output(cmd)[:-1].split()
+    ports = reply[4].split(":")
+    port = ports[0] if target != OCP_TARGET else ports[1].split("/")[0]
     return port.strip()
 
 
